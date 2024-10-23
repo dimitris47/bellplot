@@ -83,6 +83,8 @@ class MainWidget(QtWidgets.QWidget):
         self.action_row = QHBoxLayout()
         for w in [self.calc_btn, self.radio_lbl, self.check_box]:
             self.action_row.addWidget(w)
+        self.action_row.insertStretch(0, 32)
+        self.action_row.addStretch(32)
 
         self.save_btn = QPushButton('Save figure')
         self.save_btn.setVisible(False)
