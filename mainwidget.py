@@ -1,191 +1,145 @@
-"""
-Copyright 2024 Dimitris Psathas <dimitrisinbox@gmail.com>
-This file is part of BellPlot.
-
-BellPlot is free software: you can redistribute it and/or modify it under the
-terms of the GNU General Public License  as  published by  the  Free Software
-Foundation,  either version 3 of the License,  or (at your option)  any later
-version.
-
-BellPlot is distributed in the hope that it will be useful,  but  WITHOUT ANY
-WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
-A PARTICULAR PURPOSE.  See the  GNU General Public License  for more details.
-
-You should have received a copy of the  GNU General Public License along with
-BellPlot. If not, see <http://www.gnu.org/licenses/>.
-"""
-
-
 import datetime
+import os
+from io import BytesIO
+
+import matplotlib.pyplot as plt
 import numpy as np
 import scipy.stats
-import os
-from PySide6 import QtCore, QtWidgets, QtGui
-from PySide6.QtGui import QPixmap, QIcon
-from PySide6.QtWidgets import *
-from PySide6.QtCore import QLocale
-from io import BytesIO
 from PIL import Image
+from PySide6.QtCore import Qt, QLocale, Slot
+from PySide6.QtGui import QPixmap, QIcon, QDoubleValidator, QImage
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QFormLayout, QLabel, QLineEdit, QPushButton,
+    QHBoxLayout, QCheckBox, QSizePolicy, QMessageBox, QFileDialog
+)
 
 
-class MainWidget(QtWidgets.QWidget):
-    box: QVBoxLayout
-    plot_lbl: QLabel
-    save_btn: QPushButton
-    screen_width: int
-    screen_height: int
-
+class MainWidget(QWidget):
     def __init__(self, w, h):
         super().__init__()
-
-        self.screen_width = w
-        self.screen_height = h
+        self.screen_width, self.screen_height = w, h
+        self.init_hor = int(w / 2 - self.width() / 2)
         self.resize(316, 224)
-
         self.setWindowIcon(QIcon('bellplot.png'))
         self.box = QVBoxLayout(self)
 
-        self.form = QFormLayout()
-        self.mean_lbl = QLabel('Mean')
-        self.mean_entry = QLineEdit()
-        self.dev_lbl = QLabel('Deviation')
-        self.dev_entry = QLineEdit()
-        self.score_lbl = QLabel('Score')
-        self.score_entry = QLineEdit()
-        self.prob_lbl = QLabel('Cumulative probability')
-        self.prob_entry = QLineEdit()
+        form = QFormLayout()
+        labels = ['Mean', 'Deviation', 'Score', 'Cumulative probability']
+        self.entries = {}
+        validator = QDoubleValidator()
+        validator.setNotation(QDoubleValidator.StandardNotation)
+        validator.setLocale(QLocale(QLocale.English, QLocale.UnitedStates))
+        for label in labels:
+            lbl = QLabel(label)
+            entry = QLineEdit()
+            entry.setValidator(validator)
+            entry.setAlignment(Qt.AlignCenter)
+            entry.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+            entry.returnPressed.connect(self.calculation)
+            form.addRow(lbl, entry)
+            self.entries[label] = entry
+        self.box.addLayout(form)
 
-        validator = QtGui.QDoubleValidator()
-        validator.setNotation(QtGui.QDoubleValidator.StandardNotation)
-        validator.setLocale(QLocale(QLocale.Language.English, QLocale.Country.UnitedStates))
-
-        for widget in [self.mean_entry, self.dev_entry, self.score_entry, self.prob_entry]:
-            widget.setValidator(validator)
-            widget.setAlignment(QtCore.Qt.AlignCenter)
-            widget.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
-            widget.returnPressed.connect(self.calculation)
-
-        for row in [[self.mean_lbl, self.mean_entry],
-                    [self.dev_lbl, self.dev_entry],
-                    [self.score_lbl, self.score_entry],
-                    [self.prob_lbl, self.prob_entry]]:
-            self.form.addRow(row[0], row[1])
-
-        self.plot_lbl = QLabel('')
-        self.plot_lbl.setVisible(False)
-
+        action_row = QHBoxLayout()
         self.calc_btn = QPushButton('Calculate')
         self.calc_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.calc_btn.clicked.connect(self.calculation)
-        self.radio_lbl = QLabel('Plot')
         self.check_box = QCheckBox()
-        self.check_box.setChecked(False)
-        self.action_row = QHBoxLayout()
-        for w in [self.calc_btn, self.radio_lbl, self.check_box]:
-            self.action_row.addWidget(w)
-        self.action_row.insertStretch(0, 32)
-        self.action_row.addStretch(32)
+        action_row.addStretch(32)
+        action_row.addWidget(self.calc_btn)
+        action_row.addWidget(QLabel('Plot'))
+        action_row.addWidget(self.check_box)
+        action_row.addStretch(32)
+        self.box.addLayout(action_row)
 
+        self.plot_lbl = QLabel()
+        self.plot_lbl.setVisible(False)
         self.save_btn = QPushButton('Save figure')
+        self.save_btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
         self.save_btn.setVisible(False)
         self.save_btn.clicked.connect(self.save_image)
+        self.box.addWidget(self.plot_lbl)
+        self.box.addWidget(self.save_btn, alignment=Qt.AlignCenter)
+        self.move(self.init_hor, 96)
 
-        self.box.addLayout(self.form)
-        self.box.addLayout(self.action_row)
-        for widget in [self.plot_lbl, self.save_btn]:
-            self.box.addWidget(widget)
-
-        self.move(int(self.screen_width/2 - self.width()/2), 96)
-        print(self.width())
-
-    @QtCore.Slot()
+    @Slot()
     def calculation(self):
-        self.plot_lbl.setVisible(False)
-        self.resize(316, 224)
-        if len(self.mean_entry.text()) and len(self.dev_entry.text()):
-            mean = float(self.mean_entry.text())
-            dev = float(self.dev_entry.text())
-            if len(self.score_entry.text()) == 0 and len(self.prob_entry.text()) != 0:
-                prob = float(self.prob_entry.text())
-                score = scipy.stats.norm.ppf(prob, mean, dev)
-                self.score_entry.setText(str(round(score, 1)))
-                if self.check_box.isChecked():
-                    self.plot_bell(mean, dev, score, prob)
-            elif len(self.prob_entry.text()) == 0 and len(self.score_entry.text()) != 0:
-                score = float(self.score_entry.text())
-                prob = scipy.stats.norm.cdf(score, mean, dev)
-                self.prob_entry.setText(str(round(prob, 5)))
-                if self.check_box.isChecked():
-                    self.plot_bell(mean, dev, score, prob)
+        mean, dev = self.entries['Mean'].text(), self.entries['Deviation'].text()
+        if mean and dev:
+            mean, dev = float(mean), float(dev)
+            score, prob = self.entries['Score'].text(), self.entries['Cumulative probability'].text()
+            if not score and prob:
+                prob, score = float(prob), scipy.stats.norm.ppf(float(prob), mean, dev)
+                self.entries['Score'].setText(str(round(score, 1)))
+            elif not prob and score:
+                score, prob = float(score), scipy.stats.norm.cdf(float(score), mean, dev)
+                self.entries['Cumulative probability'].setText(str(round(prob, 5)))
             else:
-                QMessageBox.warning(self, 'Wrong input', 'Only one out of 4 values must be left empty.')
-                self.plot_lbl.setVisible(False)
+                self.show_warning('Only one out of 4 values must be left empty.')
+                return
+            self.determine_plotting(mean, dev, score, prob)
         else:
-            QMessageBox.warning(self, 'Wrong input', 'Both the mean and deviation entries must be filled.')
-            self.plot_lbl.setVisible(False)
+            self.show_warning('Both the mean and deviation entries must be filled.')
+
+    def determine_plotting(self, mean, dev, score, prob):
+        if self.check_box.isChecked():
+            self.plot_bell(mean, dev, score, prob)
+        else:
+            self.remove_plot_elements()
+
+    def remove_plot_elements(self):
+        for widget in [self.plot_lbl, self.save_btn]:
+            widget.setVisible(False)
+            self.box.removeWidget(widget)
+        self.resize(316, 224)
+        self.move(self.init_hor, 96)
+        self.adjustSize()
+
+    def show_warning(self, message):
+        QMessageBox.warning(self, 'Wrong input', message)
+        self.remove_plot_elements()
 
     def plot_bell(self, mean, dev, score, prob):
-        import matplotlib.pyplot as plt
-
-        z1 = (mean - score) / dev
-        z2 = (score - mean) / dev
-
-        x = np.arange(z1, z2, 0.001)
-        x_all = np.arange(-10, 10, 0.001)
-        y = scipy.stats.norm.pdf(x, 0, 1)
-        y2 = scipy.stats.norm.pdf(x_all, 0, 1)
-
+        z = (score - mean) / dev
+        x_all = np.linspace(-10, 10, 20000)
+        y_all = scipy.stats.norm.pdf(x_all, 0, 1)
         fig, ax = plt.subplots(figsize=(9, 7))
-        ax.plot(x_all, y2)
-
-        ax.fill_between(x, y, 0, alpha=0.3, color='b')
-        ax.fill_between(x_all, y2, 0, alpha=0.1)
-        ax.set_xlim([-4, 4])
-        ax.set_xlabel(f'# of Standard Deviations Outside the Mean: {abs(round((score - mean) / dev, 2))}\n'
-                      f'Score: {round(score, 1)}\nCumulative Probability: {round(prob, 3)}% -- 1/{round(1/(1-prob))}')
+        ax.plot(x_all, y_all)
+        ax.fill_between(x_all, y_all, alpha=0.1)
+        ax.fill_between(x_all[x_all <= z], y_all[x_all <= z], alpha=0.3, color='b')
+        ax.plot(z, scipy.stats.norm.pdf(z, 0, 1), 'ro')
+        ax.set_xlim(-4, 4)
+        ax.set_xlabel(f'# of Std Devs: {abs(round(z, 2))}\nScore: {round(score, 1)}\nCumulative Probability: {round(prob, 5)}%')
         ax.set_yticklabels([])
         ax.set_title('Normal Gaussian Curve')
-
         plt.grid(True)
-
-        self.plot_lbl.setVisible(True)
-        self.plot_lbl.setScaledContents(True)
         self.plot_lbl.setPixmap(self.fig2pixmap(fig))
+        self.plot_lbl.setVisible(True)
         self.save_btn.setVisible(True)
-
+        self.box.addWidget(self.plot_lbl)
+        self.box.addWidget(self.save_btn, alignment=Qt.AlignCenter)
         plt.close()
-
-        self.move(int(self.screen_width/2 - self.width()/2), 96)
+        self.move(int(self.screen_width / 2 - self.plot_lbl.width() / 2 - 24), 96)
 
     def fig2pixmap(self, fig):
         buf = BytesIO()
         fig.savefig(buf, format='png', dpi=900)
         buf.seek(0)
-        img = Image.open(buf)
-        qim = QtGui.QImage(img.tobytes(), img.size[0], img.size[1], QtGui.QImage.Format_RGBA8888)
+        img = Image.open(buf).convert('RGBA')
+        qim = QImage(img.tobytes(), img.width, img.height, QImage.Format_RGBA8888)
         pixmap = QPixmap.fromImage(qim)
-        w = self.screen_width
-        h = self.screen_height
-        ratio = w / h * 9 / 7
-        return pixmap.scaled(int(w * 0.56 * ratio), int(h * 0.56), QtCore.Qt.KeepAspectRatio,
-                             QtCore.Qt.SmoothTransformation)
+        ratio = (self.screen_width / self.screen_height) * (9 / 7)
+        return pixmap.scaled(int(self.screen_width * 0.56 * ratio), int(self.screen_height * 0.56), Qt.KeepAspectRatio,
+                             Qt.SmoothTransformation)
 
     def save_image(self):
-        default_dir = os.path.expanduser('~') + '/Desktop'
-        default_filename = os.path.join(default_dir, f'figure_{datetime.datetime.now().strftime("%Y%m%d_%H.%M")}.png')
-        options = QFileDialog.Options()
-        options |= QFileDialog.DontUseNativeDialog
-        filename, _ = QFileDialog.getSaveFileName(self,
-                                                  'Save Figure',
-                                                  default_filename,
-                                                  'PNG Files (*.png);;All Files (*)',
-                                                  options=options)
+        default_path = os.path.join(os.path.expanduser('~'), 'Desktop',
+                                    f'figure_{datetime.datetime.now().strftime("%Y%m%d_%H.%M")}.png')
+        filename, _ = QFileDialog.getSaveFileName(self, 'Save Figure', default_path, 'PNG Files (*.png);;All Files (*)')
         if filename:
-            if not filename.endswith('.png'):
-                filename += '.png'
+            filename = filename if filename.endswith('.png') else f'{filename}.png'
             pixmap = self.plot_lbl.pixmap()
-            if pixmap:
-                pixmap.save(filename, 'PNG')
+            if pixmap and pixmap.save(filename, 'PNG'):
                 QMessageBox.information(self, 'Figure saved', 'Figure saved successfully')
             else:
                 QMessageBox.warning(self, 'Failed to save', 'Failed to save figure')

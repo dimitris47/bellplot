@@ -27,7 +27,7 @@ def main():
     app.setApplicationDisplayName('Bell Plot')
     app.setOrganizationName('DP Software')
     app.setOrganizationDomain('com.dpsoftware.com')
-    app.setApplicationVersion('0.1.0')
+    app.setApplicationVersion('0.99')
 
     w = app.primaryScreen().size().width()
     h = app.primaryScreen().size().height()
