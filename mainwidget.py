@@ -109,7 +109,9 @@ class MainWidget(QWidget):
         ax.fill_between(x_all[x_all <= z], y_all[x_all <= z], alpha=0.3, color='b')
         ax.plot(z, scipy.stats.norm.pdf(z, 0, 1), 'ro')
         ax.set_xlim(-4, 4)
-        ax.set_xlabel(f'# of Std Devs: {abs(round(z, 2))}\nScore: {round(score, 1)}\nCumulative Probability: {round(prob, 5)}%')
+        ax.set_xlabel(f'# of Std Devs: {abs(round(z, 2))}\n'
+                      f'Score: {round(score, 1)}\n'
+                      f'Cumulative Probability: {round(prob, 4)} - Percentage: {round((1-prob)*100, 2)}%')
         ax.set_yticklabels([])
         ax.set_title('Normal Gaussian Curve')
         plt.grid(True)
