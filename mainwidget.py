@@ -131,13 +131,19 @@ class MainWidget(QWidget):
         qim = QImage(img.tobytes(), img.width, img.height, QImage.Format_RGBA8888)
         pixmap = QPixmap.fromImage(qim)
         ratio = (self.screen_width / self.screen_height) * (9 / 7)
-        return pixmap.scaled(int(self.screen_width * 0.56 * ratio), int(self.screen_height * 0.56), Qt.KeepAspectRatio,
+        return pixmap.scaled(int(self.screen_width * 0.56 * ratio),
+                             int(self.screen_height * 0.56),
+                             Qt.KeepAspectRatio,
                              Qt.SmoothTransformation)
 
     def save_image(self):
-        default_path = os.path.join(os.path.expanduser('~'), 'Desktop',
+        default_path = os.path.join(os.path.expanduser('~'),
+                                    'Desktop',
                                     f'figure_{datetime.datetime.now().strftime("%Y%m%d_%H.%M")}.png')
-        filename, _ = QFileDialog.getSaveFileName(self, 'Save Figure', default_path, 'PNG Files (*.png);;All Files (*)')
+        filename, _ = QFileDialog.getSaveFileName(self,
+                                                  'Save Figure',
+                                                  default_path,
+                                                  'PNG Files (*.png);;All Files (*)')
         if filename:
             filename = filename if filename.endswith('.png') else f'{filename}.png'
             pixmap = self.plot_lbl.pixmap()
