@@ -100,6 +100,9 @@ class MainWidget(QWidget):
         self.remove_plot_elements()
 
     def plot_bell(self, mean, dev, score, prob):
+        perc = round((1-prob)*100, 2)
+        one_in = int(100/perc)
+
         z = (score - mean) / dev
         x_all = np.linspace(-10, 10, 20000)
         y_all = scipy.stats.norm.pdf(x_all, 0, 1)
@@ -111,7 +114,7 @@ class MainWidget(QWidget):
         ax.set_xlim(-4, 4)
         ax.set_xlabel(f'# of Std Devs: {abs(round(z, 2))}\n'
                       f'Score: {round(score, 1)}\n'
-                      f'Cumulative Probability: {round(prob, 4)} - Percentage: {round((1-prob)*100, 2)}%')
+                      f'Cumulative Probability: {round(prob, 4)} - Percentage: {perc}% (1/{one_in})')
         ax.set_yticklabels([])
         ax.set_title('Normal Gaussian Curve')
         plt.grid(True)
